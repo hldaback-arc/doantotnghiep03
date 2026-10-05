@@ -1,0 +1,651 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model ai_request_contexts {
+  id            String      @id(map: "PK_ai_request_contexts") @default(dbgenerated("newsequentialid()"), map: "DF_ai_request_contexts_id") @db.UniqueIdentifier
+  ai_request_id String      @db.UniqueIdentifier
+  entity_type   String      @db.NVarChar(40)
+  entity_id     String      @db.UniqueIdentifier
+  context_role  String?     @db.NVarChar(30)
+  created_at    DateTime    @default(dbgenerated("sysutcdatetime()"), map: "DF_ai_request_contexts_created_at")
+  ai_requests   ai_requests @relation(fields: [ai_request_id], references: [id], onUpdate: NoAction, map: "FK_ai_request_contexts_requests")
+
+  @@unique([ai_request_id, entity_type, entity_id], map: "UQ_ai_request_contexts_entity")
+}
+
+model ai_requests {
+  id                  String                @id(map: "PK_ai_requests") @default(dbgenerated("newsequentialid()"), map: "DF_ai_requests_id") @db.UniqueIdentifier
+  request_id          String                @unique(map: "UQ_ai_requests_request_id") @db.NVarChar(100)
+  user_id             String?               @db.UniqueIdentifier
+  module              String                @db.NVarChar(50)
+  model               String?               @db.NVarChar(120)
+  latency_ms          Int?
+  input_summary       String?               @db.NVarChar(Max)
+  output_summary      String?               @db.NVarChar(Max)
+  validation_status   String                @db.NVarChar(20)
+  fallback_used       Boolean               @default(false, map: "DF_ai_requests_fallback")
+  status              String                @db.NVarChar(20)
+  error_code          String?               @db.NVarChar(80)
+  created_at          DateTime              @default(dbgenerated("sysutcdatetime()"), map: "DF_ai_requests_created_at")
+  ai_request_contexts ai_request_contexts[]
+  users               users?                @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_ai_requests_users")
+
+  @@index([user_id, created_at(sort: Desc)], map: "IX_ai_requests_user_created")
+}
+
+model audit_logs {
+  id                String   @id(map: "PK_audit_logs") @default(dbgenerated("newsequentialid()"), map: "DF_audit_logs_id") @db.UniqueIdentifier
+  actor_user_id     String?  @db.UniqueIdentifier
+  event_type        String   @db.NVarChar(60)
+  entity_type       String   @db.NVarChar(80)
+  entity_id         String?  @db.UniqueIdentifier
+  source_key        String?  @db.NVarChar(50)
+  old_value_summary String?  @db.NVarChar(Max)
+  new_value_summary String?  @db.NVarChar(Max)
+  result_status     String?  @db.NVarChar(30)
+  error_code        String?  @db.NVarChar(80)
+  created_at        DateTime @default(dbgenerated("sysutcdatetime()"), map: "DF_audit_logs_created_at")
+  users             users?   @relation(fields: [actor_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_audit_logs_users")
+
+  @@index([entity_type, entity_id, created_at(sort: Desc)], map: "IX_audit_logs_entity_time")
+  @@index([event_type, created_at(sort: Desc)], map: "IX_audit_logs_event_time")
+}
+
+model budget_alert_settings {
+  id                String   @id(map: "PK_budget_alert_settings") @default(dbgenerated("newsequentialid()"), map: "DF_budget_alert_settings_id") @db.UniqueIdentifier
+  user_id           String   @db.UniqueIdentifier
+  threshold_percent Decimal  @db.Decimal(5, 2)
+  enabled           Boolean  @default(true, map: "DF_budget_alert_settings_enabled")
+  created_at        DateTime @default(dbgenerated("sysutcdatetime()"), map: "DF_budget_alert_settings_created_at")
+  updated_at        DateTime @default(dbgenerated("sysutcdatetime()"), map: "DF_budget_alert_settings_updated_at")
+  users             users    @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_budget_alert_settings_users")
+
+  @@unique([user_id, threshold_percent], map: "UQ_budget_alert_settings_user_threshold")
+}
+
+model budget_alerts {
+  id                String      @id(map: "PK_budget_alerts") @default(dbgenerated("newsequentialid()"), map: "DF_budget_alerts_id") @db.UniqueIdentifier
+  user_id           String      @db.UniqueIdentifier
+  budget_id         String      @db.UniqueIdentifier
+  category_id       String?     @db.UniqueIdentifier
+  threshold_percent Decimal     @db.Decimal(5, 2)
+  triggered_at      DateTime    @default(dbgenerated("sysutcdatetime()"), map: "DF_budget_alerts_triggered_at")
+  acknowledged_at   DateTime?
+  budgets           budgets     @relation(fields: [budget_id], references: [id], onUpdate: NoAction, map: "FK_budget_alerts_budgets")
+  categories        categories? @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_budget_alerts_categories")
+  users             users       @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_budget_alerts_users")
+}
+
+model budget_categories {
+  budget_id    String     @db.UniqueIdentifier
+  category_id  String     @db.UniqueIdentifier
+  limit_amount Decimal    @db.Decimal(19, 2)
+  created_at   DateTime   @default(dbgenerated("sysutcdatetime()"), map: "DF_budget_categories_created_at")
+  updated_at   DateTime   @default(dbgenerated("sysutcdatetime()"), map: "DF_budget_categories_updated_at")
+  budgets      budgets    @relation(fields: [budget_id], references: [id], onUpdate: NoAction, map: "FK_budget_categories_budgets")
+  categories   categories @relation(fields: [category_id], references: [id], onUpdate: NoAction, map: "FK_budget_categories_categories")
+
+  @@id([budget_id, category_id], map: "PK_budget_categories")
+}
+
+model budgets {
+  id                String              @id(map: "PK_budgets") @default(dbgenerated("newsequentialid()"), map: "DF_budgets_id") @db.UniqueIdentifier
+  user_id           String              @db.UniqueIdentifier
+  period_start      DateTime            @db.Date
+  period_end        DateTime            @db.Date
+  total_budget      Decimal             @db.Decimal(19, 2)
+  status            String              @default("ACTIVE", map: "DF_budgets_status") @db.NVarChar(20)
+  created_at        DateTime            @default(dbgenerated("sysutcdatetime()"), map: "DF_budgets_created_at")
+  updated_at        DateTime            @default(dbgenerated("sysutcdatetime()"), map: "DF_budgets_updated_at")
+  deleted_at        DateTime?
+  budget_alerts     budget_alerts[]
+  budget_categories budget_categories[]
+  users             users               @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_budgets_users")
+}
+
+model cart_items {
+  id                  String          @id(map: "PK_cart_items") @default(dbgenerated("newsequentialid()"), map: "DF_cart_items_id") @db.UniqueIdentifier
+  cart_id             String          @db.UniqueIdentifier
+  store_id            String          @db.UniqueIdentifier
+  product_id          String          @db.UniqueIdentifier
+  ingredient_id       String?         @db.UniqueIdentifier
+  quantity            Decimal         @db.Decimal(12, 3)
+  unit                String          @db.NVarChar(30)
+  unit_price_snapshot Decimal         @db.Decimal(19, 2)
+  line_total          Decimal?        @db.Decimal(19, 2)
+  product_source_id   String          @db.UniqueIdentifier
+  source_updated_at   DateTime
+  created_at          DateTime        @default(dbgenerated("sysutcdatetime()"), map: "DF_cart_items_created_at")
+  cart_sessions       cart_sessions   @relation(fields: [cart_id], references: [id], onUpdate: NoAction, map: "FK_cart_items_carts")
+  ingredients         ingredients?    @relation(fields: [ingredient_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_cart_items_ingredients")
+  products            products        @relation(fields: [product_id], references: [id], onUpdate: NoAction, map: "FK_cart_items_products")
+  product_sources     product_sources @relation(fields: [product_source_id], references: [id], onUpdate: NoAction, map: "FK_cart_items_sources")
+  stores              stores          @relation(fields: [store_id], references: [id], onUpdate: NoAction, map: "FK_cart_items_stores")
+
+  @@index([cart_id], map: "IX_cart_items_cart")
+}
+
+model cart_sessions {
+  id              String       @id(map: "PK_cart_sessions") @default(dbgenerated("newsequentialid()"), map: "DF_cart_sessions_id") @db.UniqueIdentifier
+  user_id         String       @db.UniqueIdentifier
+  meal_plan_id    String?      @db.UniqueIdentifier
+  budget_snapshot Decimal      @db.Decimal(19, 2)
+  strategy        String       @db.NVarChar(30)
+  status          String       @default("DRAFT", map: "DF_cart_sessions_status") @db.NVarChar(20)
+  currency        String       @default("VND", map: "DF_cart_sessions_currency") @db.Char(3)
+  created_at      DateTime     @default(dbgenerated("sysutcdatetime()"), map: "DF_cart_sessions_created_at")
+  updated_at      DateTime     @default(dbgenerated("sysutcdatetime()"), map: "DF_cart_sessions_updated_at")
+  deleted_at      DateTime?
+  cart_items      cart_items[]
+  meal_plans      meal_plans?  @relation(fields: [meal_plan_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_cart_sessions_meal_plans")
+  users           users        @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_cart_sessions_users")
+  purchases       purchases?
+}
+
+model categories {
+  id                String              @id(map: "PK_categories") @default(dbgenerated("newsequentialid()"), map: "DF_categories_id") @db.UniqueIdentifier
+  user_id           String?             @db.UniqueIdentifier
+  name              String              @db.NVarChar(80)
+  type              String              @db.NVarChar(10)
+  active            Boolean             @default(true, map: "DF_categories_active")
+  created_at        DateTime            @default(dbgenerated("sysutcdatetime()"), map: "DF_categories_created_at")
+  updated_at        DateTime            @default(dbgenerated("sysutcdatetime()"), map: "DF_categories_updated_at")
+  deleted_at        DateTime?
+  budget_alerts     budget_alerts[]
+  budget_categories budget_categories[]
+  users             users?              @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_categories_users")
+  transactions      transactions[]
+}
+
+model dish_ingredient_substitutes {
+  id                       String           @id(map: "PK_dish_ingredient_substitutes") @default(dbgenerated("newsequentialid()"), map: "DF_dish_ingredient_substitutes_id") @db.UniqueIdentifier
+  dish_ingredient_id       String           @db.UniqueIdentifier
+  substitute_ingredient_id String           @db.UniqueIdentifier
+  reason                   String           @db.NVarChar(500)
+  active                   Boolean          @default(true, map: "DF_dish_ingredient_substitutes_active")
+  created_at               DateTime         @default(dbgenerated("sysutcdatetime()"), map: "DF_dish_ingredient_substitutes_created_at")
+  dish_ingredients         dish_ingredients @relation(fields: [dish_ingredient_id], references: [id], onUpdate: NoAction, map: "FK_dish_ingredient_substitutes_dish_ingredients")
+  ingredients              ingredients      @relation(fields: [substitute_ingredient_id], references: [id], onUpdate: NoAction, map: "FK_dish_ingredient_substitutes_ingredients")
+
+  @@unique([dish_ingredient_id, substitute_ingredient_id], map: "UQ_dish_ingredient_substitutes_pair")
+}
+
+model dish_ingredients {
+  id                          String                        @id(map: "PK_dish_ingredients") @default(dbgenerated("newsequentialid()"), map: "DF_dish_ingredients_id") @db.UniqueIdentifier
+  dish_id                     String                        @db.UniqueIdentifier
+  ingredient_id               String                        @db.UniqueIdentifier
+  quantity                    Decimal                       @db.Decimal(12, 3)
+  unit                        String                        @db.NVarChar(30)
+  optional_flag               Boolean                       @default(false, map: "DF_dish_ingredients_optional")
+  created_at                  DateTime                      @default(dbgenerated("sysutcdatetime()"), map: "DF_dish_ingredients_created_at")
+  dish_ingredient_substitutes dish_ingredient_substitutes[]
+  dishes                      dishes                        @relation(fields: [dish_id], references: [id], onUpdate: NoAction, map: "FK_dish_ingredients_dishes")
+  ingredients                 ingredients                   @relation(fields: [ingredient_id], references: [id], onUpdate: NoAction, map: "FK_dish_ingredients_ingredients")
+
+  @@unique([dish_id, ingredient_id], map: "UQ_dish_ingredients_dish_ingredient")
+}
+
+model dishes {
+  id                   String                 @id(map: "PK_dishes") @default(dbgenerated("newsequentialid()"), map: "DF_dishes_id") @db.UniqueIdentifier
+  name                 String                 @db.NVarChar(160)
+  description          String?                @db.NVarChar(Max)
+  cuisine              String?                @db.NVarChar(80)
+  difficulty           String?                @db.NVarChar(20)
+  prep_minutes         Int?
+  servings_base        Decimal                @default(1, map: "DF_dishes_servings") @db.Decimal(8, 2)
+  active               Boolean                @default(false, map: "DF_dishes_active")
+  created_at           DateTime               @default(dbgenerated("sysutcdatetime()"), map: "DF_dishes_created_at")
+  updated_at           DateTime               @default(dbgenerated("sysutcdatetime()"), map: "DF_dishes_updated_at")
+  deleted_at           DateTime?
+  dish_ingredients     dish_ingredients[]
+  meal_plan_items      meal_plan_items[]
+  user_favorite_dishes user_favorite_dishes[]
+}
+
+model import_batches {
+  id                String             @id(map: "PK_import_batches") @default(dbgenerated("newsequentialid()"), map: "DF_import_batches_id") @db.UniqueIdentifier
+  product_source_id String             @db.UniqueIdentifier
+  operator_user_id  String?            @db.UniqueIdentifier
+  file_name         String?            @db.NVarChar(260)
+  status            String             @default("RECEIVED", map: "DF_import_batches_status") @db.NVarChar(20)
+  row_count         Int                @default(0, map: "DF_import_batches_row_count")
+  success_count     Int                @default(0, map: "DF_import_batches_success_count")
+  error_count       Int                @default(0, map: "DF_import_batches_error_count")
+  started_at        DateTime           @default(dbgenerated("sysutcdatetime()"), map: "DF_import_batches_started_at")
+  completed_at      DateTime?
+  created_at        DateTime           @default(dbgenerated("sysutcdatetime()"), map: "DF_import_batches_created_at")
+  users             users?             @relation(fields: [operator_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_import_batches_operators")
+  product_sources   product_sources    @relation(fields: [product_source_id], references: [id], onUpdate: NoAction, map: "FK_import_batches_sources")
+  staging_errors    staging_errors[]
+  staging_products  staging_products[]
+  staging_stores    staging_stores[]
+}
+
+model ingredient_aliases {
+  id               String      @id(map: "PK_ingredient_aliases") @default(dbgenerated("newsequentialid()"), map: "DF_ingredient_aliases_id") @db.UniqueIdentifier
+  ingredient_id    String      @db.UniqueIdentifier
+  alias            String      @db.NVarChar(160)
+  normalized_alias String      @db.NVarChar(200)
+  active           Boolean     @default(true, map: "DF_ingredient_aliases_active")
+  created_at       DateTime    @default(dbgenerated("sysutcdatetime()"), map: "DF_ingredient_aliases_created_at")
+  ingredients      ingredients @relation(fields: [ingredient_id], references: [id], onUpdate: NoAction, map: "FK_ingredient_aliases_ingredients")
+}
+
+model ingredient_allergens {
+  ingredient_id String      @db.UniqueIdentifier
+  allergen_code String      @db.NVarChar(80)
+  created_at    DateTime    @default(dbgenerated("sysutcdatetime()"), map: "DF_ingredient_allergens_created_at")
+  ingredients   ingredients @relation(fields: [ingredient_id], references: [id], onUpdate: NoAction, map: "FK_ingredient_allergens_ingredients")
+
+  @@id([ingredient_id, allergen_code], map: "PK_ingredient_allergens")
+}
+
+model ingredient_product_mappings {
+  id            String      @id(map: "PK_ingredient_product_mappings") @default(dbgenerated("newsequentialid()"), map: "DF_ingredient_product_mappings_id") @db.UniqueIdentifier
+  ingredient_id String      @db.UniqueIdentifier
+  product_id    String      @db.UniqueIdentifier
+  confidence    Decimal     @db.Decimal(5, 4)
+  match_method  String      @db.NVarChar(20)
+  review_status String      @default("PENDING", map: "DF_ingredient_product_mappings_review") @db.NVarChar(20)
+  reviewed_by   String?     @db.UniqueIdentifier
+  verified_at   DateTime?
+  active        Boolean     @default(true, map: "DF_ingredient_product_mappings_active")
+  created_at    DateTime    @default(dbgenerated("sysutcdatetime()"), map: "DF_ingredient_product_mappings_created_at")
+  updated_at    DateTime    @default(dbgenerated("sysutcdatetime()"), map: "DF_ingredient_product_mappings_updated_at")
+  ingredients   ingredients @relation(fields: [ingredient_id], references: [id], onUpdate: NoAction, map: "FK_ingredient_product_mappings_ingredients")
+  products      products    @relation(fields: [product_id], references: [id], onUpdate: NoAction, map: "FK_ingredient_product_mappings_products")
+  users         users?      @relation(fields: [reviewed_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_ingredient_product_mappings_reviewers")
+
+  @@unique([ingredient_id, product_id], map: "UQ_ingredient_product_mappings_pair")
+}
+
+model ingredients {
+  id                          String                        @id(map: "PK_ingredients") @default(dbgenerated("newsequentialid()"), map: "DF_ingredients_id") @db.UniqueIdentifier
+  name                        String                        @db.NVarChar(160)
+  normalized_name             String                        @db.NVarChar(200)
+  category                    String?                       @db.NVarChar(80)
+  default_unit                String?                       @db.NVarChar(30)
+  active                      Boolean                       @default(true, map: "DF_ingredients_active")
+  created_at                  DateTime                      @default(dbgenerated("sysutcdatetime()"), map: "DF_ingredients_created_at")
+  updated_at                  DateTime                      @default(dbgenerated("sysutcdatetime()"), map: "DF_ingredients_updated_at")
+  deleted_at                  DateTime?
+  cart_items                  cart_items[]
+  dish_ingredient_substitutes dish_ingredient_substitutes[]
+  dish_ingredients            dish_ingredients[]
+  ingredient_aliases          ingredient_aliases[]
+  ingredient_allergens        ingredient_allergens[]
+  ingredient_product_mappings ingredient_product_mappings[]
+  pantry_items                pantry_items[]
+  user_allergies              user_allergies[]
+  user_disliked_ingredients   user_disliked_ingredients[]
+}
+
+model meal_plan_items {
+  id                 String     @id(map: "PK_meal_plan_items") @default(dbgenerated("newsequentialid()"), map: "DF_meal_plan_items_id") @db.UniqueIdentifier
+  meal_plan_id       String     @db.UniqueIdentifier
+  dish_id            String?    @db.UniqueIdentifier
+  day_number         Int
+  meal_type          String     @db.NVarChar(30)
+  servings           Decimal    @db.Decimal(8, 2)
+  dish_name_snapshot String     @db.NVarChar(160)
+  created_at         DateTime   @default(dbgenerated("sysutcdatetime()"), map: "DF_meal_plan_items_created_at")
+  dishes             dishes?    @relation(fields: [dish_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_meal_plan_items_dishes")
+  meal_plans         meal_plans @relation(fields: [meal_plan_id], references: [id], onUpdate: NoAction, map: "FK_meal_plan_items_meal_plans")
+}
+
+model meal_plans {
+  id              String            @id(map: "PK_meal_plans") @default(dbgenerated("newsequentialid()"), map: "DF_meal_plans_id") @db.UniqueIdentifier
+  user_id         String            @db.UniqueIdentifier
+  plan_date       DateTime          @db.Date
+  people_count    Int
+  day_count       Int
+  goal            String?           @db.NVarChar(30)
+  status          String            @default("DRAFT", map: "DF_meal_plans_status") @db.NVarChar(20)
+  created_at      DateTime          @default(dbgenerated("sysutcdatetime()"), map: "DF_meal_plans_created_at")
+  updated_at      DateTime          @default(dbgenerated("sysutcdatetime()"), map: "DF_meal_plans_updated_at")
+  deleted_at      DateTime?
+  cart_sessions   cart_sessions[]
+  meal_plan_items meal_plan_items[]
+  users           users             @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_meal_plans_users")
+}
+
+model pantry_items {
+  id            String      @id(map: "PK_pantry_items") @default(dbgenerated("newsequentialid()"), map: "DF_pantry_items_id") @db.UniqueIdentifier
+  user_id       String      @db.UniqueIdentifier
+  ingredient_id String      @db.UniqueIdentifier
+  quantity      Decimal     @db.Decimal(12, 3)
+  unit          String      @db.NVarChar(30)
+  expires_at    DateTime?
+  note          String?     @db.NVarChar(500)
+  estimated     Boolean     @default(false, map: "DF_pantry_items_estimated")
+  created_at    DateTime    @default(dbgenerated("sysutcdatetime()"), map: "DF_pantry_items_created_at")
+  updated_at    DateTime    @default(dbgenerated("sysutcdatetime()"), map: "DF_pantry_items_updated_at")
+  deleted_at    DateTime?
+  ingredients   ingredients @relation(fields: [ingredient_id], references: [id], onUpdate: NoAction, map: "FK_pantry_items_ingredients")
+  users         users       @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_pantry_items_users")
+}
+
+model price_history {
+  id                String          @id(map: "PK_price_history") @default(dbgenerated("newsequentialid()"), map: "DF_price_history_id") @db.UniqueIdentifier
+  store_id          String          @db.UniqueIdentifier
+  product_id        String          @db.UniqueIdentifier
+  product_source_id String          @db.UniqueIdentifier
+  price             Decimal         @db.Decimal(19, 2)
+  available         Boolean?
+  source_product_id String?         @db.NVarChar(200)
+  captured_at       DateTime        @default(dbgenerated("sysutcdatetime()"), map: "DF_price_history_captured_at")
+  products          products        @relation(fields: [product_id], references: [id], onUpdate: NoAction, map: "FK_price_history_products")
+  product_sources   product_sources @relation(fields: [product_source_id], references: [id], onUpdate: NoAction, map: "FK_price_history_sources")
+  stores            stores          @relation(fields: [store_id], references: [id], onUpdate: NoAction, map: "FK_price_history_stores")
+
+  @@index([product_id, store_id, captured_at(sort: Desc)], map: "IX_price_history_product_store_time")
+}
+
+model product_sources {
+  id                       String                  @id(map: "PK_product_sources") @default(dbgenerated("newsequentialid()"), map: "DF_product_sources_id") @db.UniqueIdentifier
+  source_key               String                  @unique(map: "UQ_product_sources_source_key") @db.NVarChar(50)
+  source_type              String                  @db.NVarChar(30)
+  status                   String                  @default("ENABLED", map: "DF_product_sources_status") @db.NVarChar(20)
+  last_success_at          DateTime?
+  base_url                 String?
+  refresh_interval_minutes Int?
+  created_at               DateTime                @default(dbgenerated("sysutcdatetime()"), map: "DF_product_sources_created_at")
+  updated_at               DateTime                @default(dbgenerated("sysutcdatetime()"), map: "DF_product_sources_updated_at")
+  cart_items               cart_items[]
+  import_batches           import_batches[]
+  price_history            price_history[]
+  purchase_items           purchase_items[]
+  source_endpoints         source_endpoints[]
+  store_products           store_products[]
+  store_source_mappings    store_source_mappings[]
+}
+
+model products {
+  id                          String                        @id(map: "PK_products") @default(dbgenerated("newsequentialid()"), map: "DF_products_id") @db.UniqueIdentifier
+  name                        String                        @db.NVarChar(200)
+  normalized_name             String                        @db.NVarChar(240)
+  category                    String?                       @db.NVarChar(100)
+  brand                       String?                       @db.NVarChar(120)
+  size                        Decimal?                      @db.Decimal(12, 3)
+  size_unit                   String?                       @db.NVarChar(30)
+  unit                        String?                       @db.NVarChar(30)
+  image_url                   String?
+  active                      Boolean                       @default(true, map: "DF_products_active")
+  created_at                  DateTime                      @default(dbgenerated("sysutcdatetime()"), map: "DF_products_created_at")
+  updated_at                  DateTime                      @default(dbgenerated("sysutcdatetime()"), map: "DF_products_updated_at")
+  deleted_at                  DateTime?
+  cart_items                  cart_items[]
+  ingredient_product_mappings ingredient_product_mappings[]
+  price_history               price_history[]
+  purchase_items              purchase_items[]
+  store_products              store_products[]
+}
+
+model profiles {
+  user_id         String   @id(map: "PK_profiles") @db.UniqueIdentifier
+  full_name       String?  @db.NVarChar(120)
+  phone           String?  @db.NVarChar(30)
+  default_lat     Decimal? @db.Decimal(10, 7)
+  default_lng     Decimal? @db.Decimal(10, 7)
+  default_address String?  @db.NVarChar(500)
+  created_at      DateTime @default(dbgenerated("sysutcdatetime()"), map: "DF_profiles_created_at")
+  updated_at      DateTime @default(dbgenerated("sysutcdatetime()"), map: "DF_profiles_updated_at")
+  users           users    @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_profiles_users")
+}
+
+model purchase_items {
+  id                String          @id(map: "PK_purchase_items") @default(dbgenerated("newsequentialid()"), map: "DF_purchase_items_id") @db.UniqueIdentifier
+  purchase_id       String          @db.UniqueIdentifier
+  product_id        String          @db.UniqueIdentifier
+  store_id          String          @db.UniqueIdentifier
+  quantity          Decimal         @db.Decimal(12, 3)
+  unit              String          @db.NVarChar(30)
+  snapshot_price    Decimal         @db.Decimal(19, 2)
+  actual_price      Decimal         @db.Decimal(19, 2)
+  product_source_id String          @db.UniqueIdentifier
+  source_updated_at DateTime
+  created_at        DateTime        @default(dbgenerated("sysutcdatetime()"), map: "DF_purchase_items_created_at")
+  products          products        @relation(fields: [product_id], references: [id], onUpdate: NoAction, map: "FK_purchase_items_products")
+  purchases         purchases       @relation(fields: [purchase_id], references: [id], onUpdate: NoAction, map: "FK_purchase_items_purchases")
+  product_sources   product_sources @relation(fields: [product_source_id], references: [id], onUpdate: NoAction, map: "FK_purchase_items_sources")
+  stores            stores          @relation(fields: [store_id], references: [id], onUpdate: NoAction, map: "FK_purchase_items_stores")
+}
+
+model purchases {
+  id              String           @id(map: "PK_purchases") @default(dbgenerated("newsequentialid()"), map: "DF_purchases_id") @db.UniqueIdentifier
+  user_id         String           @db.UniqueIdentifier
+  cart_id         String           @unique(map: "UQ_purchases_cart") @db.UniqueIdentifier
+  idempotency_key String           @db.NVarChar(100)
+  confirmed_at    DateTime?
+  actual_total    Decimal          @default(0, map: "DF_purchases_actual_total") @db.Decimal(19, 2)
+  status          String           @default("PENDING", map: "DF_purchases_status") @db.NVarChar(20)
+  created_at      DateTime         @default(dbgenerated("sysutcdatetime()"), map: "DF_purchases_created_at")
+  updated_at      DateTime         @default(dbgenerated("sysutcdatetime()"), map: "DF_purchases_updated_at")
+  purchase_items  purchase_items[]
+  cart_sessions   cart_sessions    @relation(fields: [cart_id], references: [id], onUpdate: NoAction, map: "FK_purchases_carts")
+  users           users            @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_purchases_users")
+  transactions    transactions[]
+
+  @@unique([user_id, idempotency_key], map: "UQ_purchases_user_idempotency")
+}
+
+model source_endpoints {
+  id                       String          @id(map: "PK_source_endpoints") @default(dbgenerated("newsequentialid()"), map: "DF_source_endpoints_id") @db.UniqueIdentifier
+  product_source_id        String          @db.UniqueIdentifier
+  endpoint_key             String          @db.NVarChar(100)
+  base_url                 String
+  enabled                  Boolean         @default(true, map: "DF_source_endpoints_enabled")
+  refresh_interval_minutes Int?
+  last_success_at          DateTime?
+  created_at               DateTime        @default(dbgenerated("sysutcdatetime()"), map: "DF_source_endpoints_created_at")
+  updated_at               DateTime        @default(dbgenerated("sysutcdatetime()"), map: "DF_source_endpoints_updated_at")
+  product_sources          product_sources @relation(fields: [product_source_id], references: [id], onUpdate: NoAction, map: "FK_source_endpoints_product_sources")
+
+  @@unique([product_source_id, endpoint_key], map: "UQ_source_endpoints_source_key")
+}
+
+model staging_errors {
+  id             String         @id(map: "PK_staging_errors") @default(dbgenerated("newsequentialid()"), map: "DF_staging_errors_id") @db.UniqueIdentifier
+  batch_id       String         @db.UniqueIdentifier
+  row_no         Int
+  field_name     String?        @db.NVarChar(120)
+  error_code     String         @db.NVarChar(80)
+  message        String
+  created_at     DateTime       @default(dbgenerated("sysutcdatetime()"), map: "DF_staging_errors_created_at")
+  import_batches import_batches @relation(fields: [batch_id], references: [id], onUpdate: NoAction, map: "FK_staging_errors_batches")
+}
+
+model staging_products {
+  id                    String         @id(map: "PK_staging_products") @default(dbgenerated("newsequentialid()"), map: "DF_staging_products_id") @db.UniqueIdentifier
+  batch_id              String         @db.UniqueIdentifier
+  external_id           String?        @db.NVarChar(200)
+  raw_name              String?        @db.NVarChar(500)
+  raw_price             String?        @db.NVarChar(100)
+  raw_available         String?        @db.NVarChar(50)
+  raw_url               String?
+  raw_updated_at        String?        @db.NVarChar(100)
+  raw_store_external_id String?        @db.NVarChar(200)
+  row_no                Int
+  status                String         @default("PENDING", map: "DF_staging_products_status") @db.NVarChar(20)
+  created_at            DateTime       @default(dbgenerated("sysutcdatetime()"), map: "DF_staging_products_created_at")
+  import_batches        import_batches @relation(fields: [batch_id], references: [id], onUpdate: NoAction, map: "FK_staging_products_batches")
+
+  @@unique([batch_id, row_no], map: "UQ_staging_products_batch_row")
+}
+
+model staging_stores {
+  id                String         @id(map: "PK_staging_stores") @default(dbgenerated("newsequentialid()"), map: "DF_staging_stores_id") @db.UniqueIdentifier
+  batch_id          String         @db.UniqueIdentifier
+  external_store_id String?        @db.NVarChar(200)
+  raw_name          String?        @db.NVarChar(500)
+  raw_address       String?
+  raw_latitude      String?        @db.NVarChar(100)
+  raw_longitude     String?        @db.NVarChar(100)
+  row_no            Int
+  status            String         @default("PENDING", map: "DF_staging_stores_status") @db.NVarChar(20)
+  created_at        DateTime       @default(dbgenerated("sysutcdatetime()"), map: "DF_staging_stores_created_at")
+  import_batches    import_batches @relation(fields: [batch_id], references: [id], onUpdate: NoAction, map: "FK_staging_stores_batches")
+
+  @@unique([batch_id, row_no], map: "UQ_staging_stores_batch_row")
+}
+
+model store_products {
+  id                String          @id(map: "PK_store_products") @default(dbgenerated("newsequentialid()"), map: "DF_store_products_id") @db.UniqueIdentifier
+  store_id          String          @db.UniqueIdentifier
+  product_id        String          @db.UniqueIdentifier
+  price             Decimal         @db.Decimal(19, 2)
+  available         Boolean?
+  product_url       String?
+  product_source_id String          @db.UniqueIdentifier
+  source_product_id String?         @db.NVarChar(200)
+  updated_at        DateTime
+  active            Boolean         @default(true, map: "DF_store_products_active")
+  created_at        DateTime        @default(dbgenerated("sysutcdatetime()"), map: "DF_store_products_created_at")
+  deleted_at        DateTime?
+  products          products        @relation(fields: [product_id], references: [id], onUpdate: NoAction, map: "FK_store_products_products")
+  product_sources   product_sources @relation(fields: [product_source_id], references: [id], onUpdate: NoAction, map: "FK_store_products_sources")
+  stores            stores          @relation(fields: [store_id], references: [id], onUpdate: NoAction, map: "FK_store_products_stores")
+}
+
+model store_source_mappings {
+  id                String          @id(map: "PK_store_source_mappings") @default(dbgenerated("newsequentialid()"), map: "DF_store_source_mappings_id") @db.UniqueIdentifier
+  store_id          String          @db.UniqueIdentifier
+  product_source_id String          @db.UniqueIdentifier
+  external_store_id String          @db.NVarChar(200)
+  confidence        Decimal         @db.Decimal(5, 4)
+  verified_at       DateTime?
+  verified_by       String?         @db.UniqueIdentifier
+  review_status     String          @default("PENDING", map: "DF_store_source_mappings_review") @db.NVarChar(20)
+  created_at        DateTime        @default(dbgenerated("sysutcdatetime()"), map: "DF_store_source_mappings_created_at")
+  users             users?          @relation(fields: [verified_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_store_source_mappings_reviewers")
+  product_sources   product_sources @relation(fields: [product_source_id], references: [id], onUpdate: NoAction, map: "FK_store_source_mappings_sources")
+  stores            stores          @relation(fields: [store_id], references: [id], onUpdate: NoAction, map: "FK_store_source_mappings_stores")
+
+  @@unique([product_source_id, external_store_id], map: "UQ_store_source_mappings_external")
+  @@unique([store_id, product_source_id], map: "UQ_store_source_mappings_store_source")
+}
+
+model stores {
+  id                    String                  @id(map: "PK_stores") @default(dbgenerated("newsequentialid()"), map: "DF_stores_id") @db.UniqueIdentifier
+  name                  String                  @db.NVarChar(200)
+  store_type            String?                 @db.NVarChar(50)
+  brand_name            String?                 @db.NVarChar(120)
+  address               String                  @db.NVarChar(500)
+  latitude              Decimal                 @db.Decimal(10, 7)
+  longitude             Decimal                 @db.Decimal(10, 7)
+  phone                 String?                 @db.NVarChar(30)
+  website               String?
+  active                Boolean                 @default(true, map: "DF_stores_active")
+  created_at            DateTime                @default(dbgenerated("sysutcdatetime()"), map: "DF_stores_created_at")
+  updated_at            DateTime                @default(dbgenerated("sysutcdatetime()"), map: "DF_stores_updated_at")
+  deleted_at            DateTime?
+  cart_items            cart_items[]
+  price_history         price_history[]
+  purchase_items        purchase_items[]
+  store_products        store_products[]
+  store_source_mappings store_source_mappings[]
+}
+
+model transactions {
+  id               String     @id(map: "PK_transactions") @default(dbgenerated("newsequentialid()"), map: "DF_transactions_id") @db.UniqueIdentifier
+  user_id          String     @db.UniqueIdentifier
+  type             String     @db.NVarChar(10)
+  category_id      String     @db.UniqueIdentifier
+  amount           Decimal    @db.Decimal(19, 2)
+  note             String?
+  transaction_date DateTime
+  purchase_id      String?    @db.UniqueIdentifier
+  idempotency_key  String?    @db.NVarChar(100)
+  status           String     @default("POSTED", map: "DF_transactions_status") @db.NVarChar(20)
+  created_at       DateTime   @default(dbgenerated("sysutcdatetime()"), map: "DF_transactions_created_at")
+  updated_at       DateTime   @default(dbgenerated("sysutcdatetime()"), map: "DF_transactions_updated_at")
+  deleted_at       DateTime?
+  categories       categories @relation(fields: [category_id], references: [id], onUpdate: NoAction, map: "FK_transactions_categories")
+  purchases        purchases? @relation(fields: [purchase_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_transactions_purchases")
+  users            users      @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_transactions_users")
+}
+
+model user_allergies {
+  id            String       @id(map: "PK_user_allergies") @default(dbgenerated("newsequentialid()"), map: "DF_user_allergies_id") @db.UniqueIdentifier
+  user_id       String       @db.UniqueIdentifier
+  allergen_code String       @db.NVarChar(80)
+  ingredient_id String?      @db.UniqueIdentifier
+  created_at    DateTime     @default(dbgenerated("sysutcdatetime()"), map: "DF_user_allergies_created_at")
+  ingredients   ingredients? @relation(fields: [ingredient_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_user_allergies_ingredients")
+  users         users        @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_user_allergies_users")
+}
+
+model user_disliked_ingredients {
+  user_id       String      @db.UniqueIdentifier
+  ingredient_id String      @db.UniqueIdentifier
+  created_at    DateTime    @default(dbgenerated("sysutcdatetime()"), map: "DF_user_disliked_ingredients_created_at")
+  ingredients   ingredients @relation(fields: [ingredient_id], references: [id], onUpdate: NoAction, map: "FK_user_disliked_ingredients_ingredients")
+  users         users       @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_user_disliked_ingredients_users")
+
+  @@id([user_id, ingredient_id], map: "PK_user_disliked_ingredients")
+}
+
+model user_favorite_dishes {
+  user_id    String   @db.UniqueIdentifier
+  dish_id    String   @db.UniqueIdentifier
+  created_at DateTime @default(dbgenerated("sysutcdatetime()"), map: "DF_user_favorite_dishes_created_at")
+  dishes     dishes   @relation(fields: [dish_id], references: [id], onUpdate: NoAction, map: "FK_user_favorite_dishes_dishes")
+  users      users    @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_user_favorite_dishes_users")
+
+  @@id([user_id, dish_id], map: "PK_user_favorite_dishes")
+}
+
+model user_food_preferences {
+  user_id          String   @id(map: "PK_user_food_preferences") @db.UniqueIdentifier
+  diet_type        String?  @db.NVarChar(50)
+  max_prep_minutes Int?
+  default_goal     String?  @db.NVarChar(30)
+  updated_at       DateTime @default(dbgenerated("sysutcdatetime()"), map: "DF_user_food_preferences_updated_at")
+  users            users    @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_user_food_preferences_users")
+}
+
+model user_preferred_cuisines {
+  user_id    String   @db.UniqueIdentifier
+  cuisine    String   @db.NVarChar(80)
+  created_at DateTime @default(dbgenerated("sysutcdatetime()"), map: "DF_user_preferred_cuisines_created_at")
+  users      users    @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_user_preferred_cuisines_users")
+
+  @@id([user_id, cuisine], map: "PK_user_preferred_cuisines")
+}
+
+model users {
+  id                          String                        @id(map: "PK_users") @default(dbgenerated("newsequentialid()"), map: "DF_users_id") @db.UniqueIdentifier
+  email                       String                        @unique(map: "UQ_users_email") @db.NVarChar(254)
+  password_hash               String                        @db.NVarChar(255)
+  role                        String                        @default("USER", map: "DF_users_role") @db.NVarChar(30)
+  status                      String                        @default("ACTIVE", map: "DF_users_status") @db.NVarChar(20)
+  created_at                  DateTime                      @default(dbgenerated("sysutcdatetime()"), map: "DF_users_created_at")
+  updated_at                  DateTime                      @default(dbgenerated("sysutcdatetime()"), map: "DF_users_updated_at")
+  deleted_at                  DateTime?
+  ai_requests                 ai_requests[]
+  audit_logs                  audit_logs[]
+  budget_alert_settings       budget_alert_settings[]
+  budget_alerts               budget_alerts[]
+  budgets                     budgets[]
+  cart_sessions               cart_sessions[]
+  categories                  categories[]
+  import_batches              import_batches[]
+  ingredient_product_mappings ingredient_product_mappings[]
+  meal_plans                  meal_plans[]
+  pantry_items                pantry_items[]
+  profiles                    profiles?
+  purchases                   purchases[]
+  store_source_mappings       store_source_mappings[]
+  transactions                transactions[]
+  user_allergies              user_allergies[]
+  user_disliked_ingredients   user_disliked_ingredients[]
+  user_favorite_dishes        user_favorite_dishes[]
+  user_food_preferences       user_food_preferences?
+  user_preferred_cuisines     user_preferred_cuisines[]
+}
